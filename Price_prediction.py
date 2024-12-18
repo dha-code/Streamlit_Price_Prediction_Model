@@ -1,5 +1,4 @@
 import streamlit as st
-import folium
 from preprocessing.cleaning_data import DataCleaner
 from predict.prediction import KNNPredict
 
