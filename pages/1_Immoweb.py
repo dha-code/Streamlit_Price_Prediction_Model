@@ -2,19 +2,30 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from preprocessing.cleaning_data import DataCleaner
 
 st.title("Real Estate - Belgium")
-preprocess = DataCleaner()
+
+
+def read_property_data():
+    """
+    Function to read alll property info
+    """
+    immo_df = pd.read_csv("./data/PropertyData.csv")
+    immo_df["Locality"] = immo_df["Locality"].str[0:4]
+    immo_df["Locality"] = immo_df["Locality"].astype(int)
+    immo_df.drop(immo_df[immo_df["Locality"] > 9999].index, inplace=True)
+    immo_df = immo_df.drop_duplicates()
+    return immo_df
+
 
 with st.form("my_form"):
-    preprocess.zipcode = int(st.number_input("Zipcode", 1000, 9992, value=3390))
+    zipcode = int(st.number_input("Zipcode", 1000, 9992, value=3390))
     submitted = st.form_submit_button("Submit")
 
 if submitted:
     st.subheader("All properties in your locality")
-    data = preprocess.read_property_data()
-    data = data[data["Locality"] == preprocess.zipcode]
+    data = read_property_data()
+    data = data[data["Locality"] == zipcode]
 
     col_list = [
         "Subtype",
