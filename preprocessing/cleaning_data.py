@@ -22,8 +22,12 @@ class DataCleaner:
         self.popdensity = None
         self.tax = None
         self.region = None
+        self.zipinfo_absent = False
 
     def preprocess(self):
+        """
+        Function to call all the preprocessing steps on differnt columns 
+        """
         self.property_type = self.categorise_property()
         self.subtype = self.categorise_subproperty(self.subtype)
         self.building_state = self.replace_build_state(self.building_state)
@@ -31,16 +35,24 @@ class DataCleaner:
         self.age = self.set_age()        
         self.region = self.get_region(self.zipcode)
         self.read_zip_info()
-        #self.quality_check()
+        
         npdata = self.to_numpy()
         column_header = ["Property type","Subtype","Age","Living area","Bedrooms","Bathrooms",
                      "Terrace Area","EPC score","Land surface","Taxes", "Population Density",
                      "Facades","Building state","Region","Latitude","Longitude","Income"]
         data = pd.DataFrame([npdata], columns=column_header)
-        #print(data)
         return data 
     
+    def get_coordinates(self):
+        """
+        Function to return the coordinates of the object
+        """
+        return [self.latitude, self.longitude]
+    
     def to_numpy(self):
+        """
+        Function to convert row to np array
+        """
         return np.array((self.property_type,self.subtype,self.age,self.living_area,
                          self.bedrooms,self.bathrooms,self.terrace_area,
                          self.epc,self.land_surface,self.tax,self.popdensity,
@@ -48,18 +60,21 @@ class DataCleaner:
                          self.latitude,self.longitude,self.income))
 
     def set_age(self):
+        """
+        Function to determine age of the property
+        """
         if self.year <= 2024:
             return 2024-int(self.year)
         return 0
     
     def categorise_property(self):
+        """
+        Function to label encode the property type
+        """
         if self.property_type == 'House':
             return 1
         return 0
-
-    def quality_check(self):
-        print(self)
-        
+      
     def replace_epc(self, x):
         """
         Function to replace EPC score (string) to numerical value
@@ -118,6 +133,9 @@ class DataCleaner:
             return 3
     
     def add_external_data(self, extracted_data):
+        """
+        Function to add income, population density and taxes based on zipcode
+        """
         self.popdensity = int(extracted_data.iloc[0,1])
         self.tax = float(extracted_data.iloc[0,2])
         self.income = float(extracted_data.iloc[0,3])
@@ -125,10 +143,35 @@ class DataCleaner:
         self.latitude = float(extracted_data.iloc[0,5])
 
     def read_zip_info(self):
+        """
+        Function to read the external data used in prediction
+        """
         zipinfo =  pd.read_csv('./data/Zipcode_info.txt', sep="\t")
+        zipinfo["Locality"] = zipinfo["Locality"].astype(int)
         extracted_data = zipinfo[zipinfo["Locality"] == self.zipcode]
-        if int(extracted_data.shape[0]) == 1:
+        if extracted_data.empty:
+            extracted_data = zipinfo[zipinfo["Locality"] == 3390]
             self.add_external_data(extracted_data)
+            self.zipinfo_absent = True
         else:
-            extracted_data = zipinfo[zipinfo["Locality"] == '3390']
-            self.add_external_data(extracted_data)        
+            self.add_external_data(extracted_data)   
+
+    def get_geo_neighbours(self):
+        """
+        Function to determine other porperties in the same locality
+        """
+        immo_df = pd.read_csv("./data/PropertyData.csv")
+        immo_df["Locality"] = immo_df["Locality"].str[0:4]
+        immo_df['Locality'] = immo_df['Locality'].astype(int)
+        immo_df.drop(immo_df[immo_df["Locality"] > 9999].index, inplace = True)
+    
+        col_list = ["Subtype","Price","Living area","Bedrooms","Bathrooms","Construction year","EPC score","Building state"]
+        if self.property_type == 1:
+            neighbors = immo_df.loc[(immo_df["Locality"] == int(self.zipcode)) & (immo_df["Property type"] == "HOUSE")]
+        else:
+            neighbors = immo_df.loc[(immo_df["Locality"] == int(self.zipcode)) & (immo_df["Property type"] == "APARTMENT")]
+        neighbors = neighbors.dropna(subset=col_list)
+        neighbors = neighbors.drop_duplicates()
+        if self.zipinfo_absent:
+            neighbors = neighbors[0:0] 
+        return neighbors[col_list].head(20)
